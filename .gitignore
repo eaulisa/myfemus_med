@@ -10,8 +10,4 @@ CMakeCache.txt.prev
 Makefile
 cmake_install.cmake
 qtcsettings.cmake
-t2f
-t2f.kdev4
-SRC/git_old/
-SRC0*/
-SRC1*/
+build/
