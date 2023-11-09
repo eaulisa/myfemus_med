@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<VTKFile type = "PUnstructuredGrid" version="0.1" byte_order="LittleEndian">
+  <PUnstructuredGrid GhostLevel="0">
+    <Piece Source="VTKParallelFiles/sol.level1.0.0.biquadratic.vtu"/>
+    <PPoints>
+      <PDataArray type="Float32" NumberOfComponents="3" format="binary"/>
+    </PPoints>
+    <PCells>
+      <PDataArray type="Int32" Name="connectivity" format="binary"/>
+      <PDataArray type="Int32" Name="offsets" format="binary"/>
+      <PDataArray type="UInt16" Name="types" format="binary"/>
+    </PCells>
+    <PCellData Scalars="scalars">
+      <PDataArray type="UInt16" Name="Metis partition" format="binary"/>
+      <PDataArray type="Float32" Name="Material" format="binary"/>
+      <PDataArray type="Float32" Name="Group" format="binary"/>
+      <PDataArray type="Float32" Name="TYPE" format="binary"/>
+      <PDataArray type="Float32" Name="Level" format="binary"/>
+    </PCellData>
+    <PPointData Scalars="scalars"> 
+      <PDataArray type="Float32" Name="U" format="binary"/>
+      <PDataArray type="Float32" Name="BdcU" format="binary"/>
+      <PDataArray type="Float32" Name="ResU" format="binary"/>
+      <PDataArray type="Float32" Name="EpsU" format="binary"/>
+    </PPointData>
+  </PUnstructuredGrid>
+</VTKFile>
