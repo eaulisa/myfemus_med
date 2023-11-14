@@ -2,19 +2,30 @@
 
 using namespace femus;
 
-int main(int argc, char **args) {
+int main (int argc, char **args) {
 
-  MyFEMuSMED PM(argc, args, "../MESH/quad64.med");
-  PM.init();
-  PM.femus_to_med_mesh();
-  PM.femus_to_med_field("U");
+  unsigned numberOfUniformRefinements = 1;
+  MyFEMuSMED myfemus (argc, args, "../MESH/square_mixed.neu", numberOfUniformRefinements);
 
-  unsigned nIterations = 2;
+  FemusMedCoupling PM(myfemus._mlSol.GetSolutionLevel(numberOfUniformRefinements-1));
 
-  for (unsigned it = 1; it <= nIterations; it++) {
-    std::cout << "ITERATION " << it << "\n";
-    PM.solve(it);
-    PM.write(it);
-  }
+
+  unsigned mshType = 2;
+  PM.Femus2MedMesh ("linear");
+  PM.Femus2MedNodeField ({"P","V", "U"}, "linear");
+  PM.Femus2MedNodeField ({"U","P", "V"}, "biquadratic");
+  PM.Femus2MedNodeField ({"P","P", "P"}, "biquadratic");
+
+  PM.BuildProjectionMatrixBetweenFields(PM._medField[0],PM._medMesh[0]);
+  PM.BuildProjectionMatrixBetweenMeshes(PM._medMesh[0],PM._medMesh[0]);
+
+
+  //unsigned nIterations = 2;
+
+  // for (unsigned it = 1; it <= nIterations; it++) {
+  //   std::cout << "ITERATION " << it << "\n";
+  //   PM.solve(it);
+  //   PM.write(it);
+  // }
   return 0;
 }
