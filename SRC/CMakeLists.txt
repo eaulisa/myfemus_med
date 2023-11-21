@@ -25,7 +25,7 @@ set(hdf5_DIR "$ENV{PLAT_THIRD_PARTY_DIR}/hdf5/share/cmake/hdf5")
 find_package(hdf5 REQUIRED NO_MODULE)
 
 set(MEDCoupling_DIR "$ENV{PLAT_THIRD_PARTY_DIR}/medcoupling/cmake_files")
-find_package(MEDCoupling REQUIRED)
+find_package(MEDCoupling REQUIRED PATHS $ENV{SPACK_ENV}/.spack-env/view/cmake_files)
 
 include(FeatureSummary)
 
@@ -46,9 +46,11 @@ add_executable(${PROJECT_NAME})
 set(SRC_FILES
   main.cpp
   fem_ttu.cpp
+  FemusMedCoupling.cpp
 )
 set(HEADER_FILES
   fem_ttu.hpp
+  FemusMedCoupling.hpp
 )
 
 target_sources(${PROJECT_NAME}
