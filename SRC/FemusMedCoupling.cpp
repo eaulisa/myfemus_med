@@ -99,11 +99,11 @@ namespace femus {
       MPI_Bcast(nDofs.data(), size, MPI_INT, kproc, MPI_COMM_WORLD);
       MPI_Bcast(&cnt, 1, MPI_UNSIGNED, kproc, MPI_COMM_WORLD);
       topology.resize(cnt);
-      if(sizeof(mcIdType) == 4)
+      if (sizeof(mcIdType) == 4)
         MPI_Bcast(topology.data(), cnt, MPI_INT, kproc, MPI_COMM_WORLD);
-      else if(sizeof(mcIdType) == 8)
+      else if (sizeof(mcIdType) == 8)
         MPI_Bcast(topology.data(), cnt, MPI_LONG, kproc, MPI_COMM_WORLD);
-      else{
+      else {
         std::cout << "this type int is not supported\n";
         abort();
       }
@@ -379,6 +379,127 @@ namespace femus {
     }
   }
 
+
+
+  // =======================================================
+  void FemusMedCoupling::Femus2MedCellField(const std::vector<std::string> &fieldName, const unsigned &mshType) {
+
+    if (mshType > 2) {
+      std::cout << "Error in void MyFEMuSMED::femus_to_med_field (const std::vector<std::string> &fieldName, const unsigned &mshType)!!!\n";
+      std::cout << "Only linear \"0\", quadratic \"1\", or biquadratic \"2\" meshTypes are available\n";
+      abort();
+    }
+
+
+    if (_medMesh[mshType] == NULL) {
+      this->Femus2MedMesh(mshType);
+    }
+
+    // Solution* sol = _mlSol.GetSolutionLevel(_numberOfUniformLevels - 1);
+    // Mesh* msh = sol->GetMesh();    // pointer to the mesh (level) object
+    unsigned    iproc = _msh->processor_id(); // get the process_id (for parallel computation)
+    unsigned    nprocs = _msh->n_processors(); // get the process_id (for parallel computation)
+
+    std::string fldAllName = "";
+    //solution variable
+
+
+    std::vector<unsigned> fieldIndex(fieldName.size());
+    std::vector<unsigned> fieldType(fieldName.size());
+    std::vector<std::string> thisFieldNames(fieldName.size());
+
+
+    unsigned fldSize = 0;
+    for (unsigned i = 0; i < fieldName.size(); i++) {
+      fieldIndex[fldSize] = _sol->GetIndex(fieldName[i].c_str());
+      fieldType[fldSize] =  _sol->GetSolutionType(fieldIndex[fldSize]);
+      if (fieldType[fldSize] == 3) {
+        fldAllName += fieldName[i] + " ";
+        thisFieldNames[fldSize] = fieldName[i];
+        fldSize++;
+      }
+      else {
+        std::cout << "Warning! " << fieldName[i] << " is a node field and cannot be yet projected into cells. Removed from list \n";
+      }
+    }
+    fldAllName += "on " + _medMesh[mshType]->getName();
+
+    fieldIndex.resize(fldSize);
+    fieldType.resize(fldSize);
+    thisFieldNames.resize(fldSize);
+
+    if (fldSize > 0) {
+
+      unsigned nel = _msh->_dofOffset[3][nprocs];
+      std::vector<double> fielddata(nel * fldSize);
+      unsigned cnt = 0;
+
+      for (unsigned kproc = 0; kproc < nprocs; kproc++) {
+        unsigned size = fldSize * (_msh->_dofOffset[3][kproc + 1] - _msh->_dofOffset[3][kproc]);
+        if (kproc == iproc) {
+          for (unsigned i = _msh->_dofOffset[3][iproc]; i < _msh->_dofOffset[3][iproc + 1]; i++) {
+            for (unsigned k = 0; k < fldSize; k++) {
+              fielddata[i * fldSize + k] = (*_sol->_Sol[fieldIndex[k]])(i);
+            }
+          }
+        }
+        MPI_Bcast(&fielddata[cnt], size, MPI_DOUBLE, kproc, MPI_COMM_WORLD);
+        cnt += size;
+      }
+
+      MEDCoupling::MEDCouplingFieldDouble *field = MEDCoupling::MEDCouplingFieldDouble::New(MEDCoupling::ON_CELLS, MEDCoupling::ONE_TIME);
+
+      field->setMesh(_medMesh[mshType]);
+      field->setName(fldAllName);
+
+
+      MEDCoupling::DataArrayDouble* fieldarr = MEDCoupling::DataArrayDouble::New();
+
+      fieldarr->alloc(nel, fldSize);
+      std::copy(fielddata.data(), fielddata.data() + fielddata.size(), fieldarr->getPointer());
+      field->setArray(fieldarr);
+      field->checkConsistencyLight();
+      field->setTime(0.0, 0, 0);
+      fieldarr->decrRef();
+      _medField.push_back(field);
+      //_medFieldNames.push_back(thisFieldNames);
+      if (iproc == 0) {
+        field->writeVTK(field->getName());
+      }
+      std::cout << "projected fields: \n" << _medField[_medField.size() - 1]->getName() << std::endl;
+      //for (unsigned k = 0; k < _medFieldNames[_medFieldNames.size() - 1].size(); k++) std::cout <<  _medFieldNames[_medFieldNames.size() - 1][k] << " ";
+      //std::cout << std::endl;
+
+    }
+    else {
+      std::cout << "Warning! There aren't node fields in the list! No fields projected!\n";
+    }
+  }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   MEDCouplingFieldDouble* FemusMedCoupling::GetFieldProjectionOnMesh(MEDCouplingFieldDouble *sourceField, MEDCouplingUMesh *med_target_mesh, const std::string & projName) {
 
     MEDCouplingRemapper remapper;
@@ -386,19 +507,36 @@ namespace femus {
     remapper.setIntersectionType(INTERP_KERNEL::Triangulation);
     remapper.prepare(sourceField->getMesh(), med_target_mesh, projName);
 
+    std::vector<std::map<long int, double> >P = remapper.getCrudeMatrix();
+
+    if (projName == "P1P1") {
+      for (unsigned i = 0; i < P.size(); i++) {
+        double sum = 0.;
+        double max = 0.;
+        long int imax = 0;
+        for (std::map<long int, double>::const_iterator it = P[i].begin(); it != P[i].end(); ++it) {
+          sum += it->second;
+          if (fabs(it->second) > max) {
+            imax = it->first;
+            max = fabs(it->second);
+          }
+        }
+        P[i] = {{imax, sum}};
+
+      }
+      remapper.setCrudeMatrix(sourceField->getMesh(), med_target_mesh, projName, P);
+    }
+
+    for (unsigned i = 0; i < P.size(); i++) {
+      for (std::map<long int, double>::const_iterator it = P[i].begin(); it != P[i].end(); ++it) {
+        std::cout << it->first << ", " << it->second << "\t";
+      }
+      std::cout << std::endl;
+    }
+    std::cout << std::endl << "New P\n";
+
     sourceField->setNature(IntensiveMaximum);//Specify which formula to use in case of non overlapping meshes
     MEDCouplingFieldDouble *targetField = remapper.transferField(sourceField, 0.); //0. is the default value in case there is no overlapping
-
-    //const std::vector<std::map<long int, double> >P = remapper.getCrudeMatrix();
-
-    // for (unsigned i = 0; i < P.size(); i++) {
-    //   for (std::map<long int, double>::const_iterator it = P[i].begin(); it != P[i].end(); ++it) {
-    //     std::cout << it->first << ", " << it->second << "\t";
-    //   }
-    //   std::cout << std::endl;
-    // }
-    // std::cout << std::endl;
-    // std::cout << std::endl;
 
 
     std::vector<std::string> subFieldName;

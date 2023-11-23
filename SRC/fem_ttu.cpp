@@ -21,7 +21,7 @@ namespace femus {
 
     _mlSol.AddSolution("U", LAGRANGE, SECOND, 2);
     _mlSol.AddSolution("V", LAGRANGE, FIRST, 2);
-    _mlSol.AddSolution("P", DISCONTINUOUS_POLYNOMIAL, FIRST, 2);
+    _mlSol.AddSolution("P", DISCONTINUOUS_POLYNOMIAL, ZERO, 2);
 
     _mlSol.Initialize("U", SetInitialCondition, &_mlProb);
     _mlSol.Initialize("V", SetInitialCondition, &_mlProb);
@@ -76,6 +76,10 @@ namespace femus {
 
     if (!strcmp(name, "V")) {
       value = x[1] * x[0];
+    }
+
+     if (!strcmp(name, "P")) {
+      value = x[0];
     }
 
     return value;

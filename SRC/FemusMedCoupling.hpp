@@ -59,6 +59,12 @@ namespace femus {
         Med2FemusNodeField(fieldName, MapMeshType(stringMeshType));
       }
 
+      void Femus2MedCellField(const std::vector<std::string> &fieldName, const unsigned &mshType);
+      void Femus2MedCellField(const std::vector<std::string> &fieldName, const std::string &stringMeshType = "biquadratic"){
+        Femus2MedCellField(fieldName, MapMeshType(stringMeshType));
+      }
+
+
       unsigned MapMeshType(const std::string stringMeshType) {
         if (stringMeshType == "linear") return 0;
         else if (stringMeshType == "quadratic") return 1;
@@ -88,7 +94,6 @@ namespace femus {
 
       MEDCoupling::MEDCouplingUMesh* _medMesh[3] = {NULL, NULL, NULL};
       std::vector <MEDCoupling::MEDCouplingFieldDouble *> _medField;
-      //std::vector <std::vector<std::string>> _medFieldNames;
   };
 
 
