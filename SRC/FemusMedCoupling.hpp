@@ -1,4 +1,4 @@
- #pragma once
+#pragma once
 
 // #include <FemusInit.hpp>
 // #include <MultiLevelProblem.hpp>
@@ -33,6 +33,7 @@ namespace femus {
       FemusMedCoupling(Solution *sol) {
         _sol = sol;
         _msh = _sol->GetMesh();
+        _iproc = _msh->processor_id();
       };
 
       ~FemusMedCoupling() {
@@ -47,53 +48,51 @@ namespace femus {
         }
       }
 
-      void Femus2MedMesh(const unsigned &meshType = 2);
-      void Femus2MedNodeField(const std::vector<std::string> &fieldName, const unsigned &mshType = 2);
-
-      void Femus2MedMesh(const std::string &meshType = "biquadratic") {
-        if (meshType == "linear") {
-          Femus2MedMesh(0);
-        }
-        else if (meshType == "quadratic") {
-          Femus2MedMesh(1);
-        }
-        else if (meshType == "biquadratic") {
-          Femus2MedMesh(2);
-        }
-        else {
-          std::cout << "Error in void MyFEMuSMED::femus_to_med_mesh (const std::string &meshType)!!!\n";
-          std::cout << "Only linear \"0\", quadratic \"1\", or biquadratic \"2\" meshTypes are available\n";
-          abort();
-        }
+      void Femus2MedMesh(const unsigned &meshType);
+      void Femus2MedMesh(const std::string &stringMeshType = "biquadratic") { Femus2MedMesh(MapMeshType(stringMeshType)); }
+      void Femus2MedNodeField(const std::vector<std::string> &fieldName, const unsigned &mshType);
+      void Femus2MedNodeField(const std::vector<std::string> &fieldName, const std::string &stringMeshType = "biquadratic") {
+        Femus2MedNodeField(fieldName, MapMeshType(stringMeshType));
+      }
+      void Med2FemusNodeField(const std::vector<std::string> &fieldName, const unsigned &mshType);
+      void Med2FemusNodeField(const std::vector<std::string> &fieldName, const std::string &stringMeshType = "biquadratic"){
+        Med2FemusNodeField(fieldName, MapMeshType(stringMeshType));
       }
 
-      void Femus2MedNodeField(const std::vector<std::string> &fieldName, const std::string &meshType = "biquadratic") {
-        if (meshType == "linear") {
-          Femus2MedNodeField(fieldName, 0);
-        }
-        else if (meshType == "quadratic") {
-          Femus2MedNodeField(fieldName, 1);
-        }
-        else if (meshType == "biquadratic") {
-          Femus2MedNodeField(fieldName, 2);
-        }
+      unsigned MapMeshType(const std::string stringMeshType) {
+        if (stringMeshType == "linear") return 0;
+        else if (stringMeshType == "quadratic") return 1;
+        else if (stringMeshType == "biquadratic") return 2;
         else {
-          std::cout << "Error in void MyFEMuSMED::femus_to_med_field (const std::vector<std::string> &fieldName, const std::string &meshType)!!!\n";
+          std::cout << "Error! " << stringMeshType << " is not a valid option\n";
           std::cout << "Only linear \"0\", quadratic \"1\", or biquadratic \"2\" meshTypes are available\n";
           abort();
         }
       }
 
       void BuildProjectionMatrixBetweenMeshes(const MEDCouplingUMesh *med_source_mesh, MEDCouplingUMesh *med_target_mesh);
-      void BuildProjectionMatrixBetweenFields(MEDCouplingFieldDouble *sourceField, MEDCouplingUMesh *med_target_mesh);
+      MEDCouplingFieldDouble * GetFieldProjectionOnMesh(MEDCouplingFieldDouble *sourceField, MEDCouplingUMesh *med_target_mesh, const std::string &projName);
 
-      Solution *_sol;
-      Mesh *_msh;
+      unsigned GetSubFieldPosition(const std::string &fieldName, const std::string &subFieldName);
+      void GetSubFieldNames(const std::string &fieldName, std::vector<std::string > &subFieldName);
+
+
+      void PushBackField(MEDCoupling::MEDCouplingFieldDouble *medField) {
+        _medField.push_back(medField);
+      }
+      unsigned GetProcessId(){return _iproc;}
+
+      Solution *_sol = NULL;
+      Mesh *_msh = NULL;
+      unsigned _iproc;
 
       MEDCoupling::MEDCouplingUMesh* _medMesh[3] = {NULL, NULL, NULL};
       std::vector <MEDCoupling::MEDCouplingFieldDouble *> _medField;
-      std::vector <std::vector<std::string>> _medFieldNames;
+      //std::vector <std::vector<std::string>> _medFieldNames;
   };
+
+
+
 
 
 

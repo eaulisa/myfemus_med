@@ -38,6 +38,50 @@ namespace femus {
     _vtkIO.Write("RESU", "biquadratic", variablesToBePrinted, 0);
   }
 
+
+
+// =======================================================
+  void MyFEMuSMED::init() {
+  }
+
+// =======================================================
+  void MyFEMuSMED::solve(unsigned const &it) {
+  }
+
+// =======================================================
+  void MyFEMuSMED::write(unsigned const &it) {
+    _vtkIO.Write("RESU", "biquadratic", {"All"}, it);
+  }
+
+//==========================================================================================
+  bool SetBoundaryCondition(const std::vector<double> &x, const char SolName[],
+                            double &value, const int facename,
+                            const double time) {
+    bool dirichlet = false; // dirichlet
+
+    value = 0;
+
+    return dirichlet;
+  }
+
+//==========================================================================================
+  double SetInitialCondition(const MultiLevelProblem *ml_prob,
+                             const std::vector<double> &x, const char name[]) {
+
+    double value = 0.;
+
+    if (!strcmp(name, "U")) {
+      value = -x[1];
+    }
+
+    if (!strcmp(name, "V")) {
+      value = x[1] * x[0];
+    }
+
+    return value;
+  }
+
+
 //   static const std::vector<std::vector<INTERP_KERNEL::NormalizedCellType>> myFemusToMEDMapping = {
 //     {INTERP_KERNEL::NORM_HEXA8, INTERP_KERNEL::NORM_HEXA20, INTERP_KERNEL::NORM_HEXA27},
 //     {INTERP_KERNEL::NORM_TETRA4, INTERP_KERNEL::NORM_TETRA10, INTERP_KERNEL::NORM_TETRA10},

@@ -67,7 +67,7 @@ namespace femus {
 
     std::vector < int > xDof; // local to global pdeSys dofs
 
-    MEDCoupling::MEDCouplingUMesh* mesh = MEDCoupling::MEDCouplingUMesh::New("Mesh" + std::to_string(mshType), dim);
+    MEDCoupling::MEDCouplingUMesh* mesh = MEDCoupling::MEDCouplingUMesh::New("Femus2MedMesh" + std::to_string(mshType), dim);
 
     mesh->allocateCells(_msh->_elementOffset[nprocs]);
 
@@ -77,7 +77,7 @@ namespace femus {
 
       std::vector<unsigned> ielGeom(size);
       std::vector<int> nDofs(size);
-      std::vector<long int> topology;
+      std::vector< mcIdType > topology;
       unsigned cnt = 0;
 
       if (iproc == kproc) {
@@ -88,17 +88,25 @@ namespace femus {
           ielGeom[ii] = _msh->GetElementType(iel);
           nDofs[ii]  = _msh->GetElementDofNumber(iel, mshType);
           for (unsigned i = 0; i < nDofs[ii]; i++) {
-            topology[cnt]  = _msh->GetSolutionDof(i, iel, mshType);
+            topology[cnt]  = static_cast< mcIdType >(_msh->GetSolutionDof(i, iel, mshType));
             cnt++;
           }
         }
       }
+
+      std::cout << " type of int = " << sizeof(mcIdType) << std::endl;
       MPI_Bcast(ielGeom.data(), size, MPI_UNSIGNED, kproc, MPI_COMM_WORLD);
       MPI_Bcast(nDofs.data(), size, MPI_INT, kproc, MPI_COMM_WORLD);
       MPI_Bcast(&cnt, 1, MPI_UNSIGNED, kproc, MPI_COMM_WORLD);
       topology.resize(cnt);
-      MPI_Bcast(topology.data(), cnt, MPI_INT, kproc, MPI_COMM_WORLD);
-
+      if(sizeof(mcIdType) == 4)
+        MPI_Bcast(topology.data(), cnt, MPI_INT, kproc, MPI_COMM_WORLD);
+      else if(sizeof(mcIdType) == 8)
+        MPI_Bcast(topology.data(), cnt, MPI_LONG, kproc, MPI_COMM_WORLD);
+      else{
+        std::cout << "this type int is not supported\n";
+        abort();
+      }
       cnt = 0;
       for (unsigned ii = 0; ii < size; ii++) {
         INTERP_KERNEL::NormalizedCellType cell = myFemusToMEDMapping[ielGeom[ii]][mshType];
@@ -164,6 +172,97 @@ namespace femus {
 
   }
 
+
+
+
+  void FemusMedCoupling::Med2FemusNodeField(const std::vector<std::string> &subFieldName, const unsigned &mshType) {
+
+    if (mshType > 2) {
+      std::cout << "Error in void MyFEMuSMED::femus_to_med_field (const std::vector<std::string> &fieldName, const unsigned &mshType)!!!\n";
+      std::cout << "Only linear \"0\", quadratic \"1\", or biquadratic \"2\" meshTypes are available\n";
+      abort();
+    }
+
+    std::string allFieldName = "";
+    for (unsigned i = 0; i < subFieldName.size(); i++) {
+      allFieldName += subFieldName[i] + " ";
+    }
+    allFieldName += "on Femus2MedMesh" + std::to_string(mshType);
+
+    unsigned cnt = _medField.size();
+    for (unsigned i = 0; i < _medField.size(); i++) {
+      if (_medField[i]->getName() == allFieldName) cnt = i;
+    }
+
+    if (cnt == _medField.size()) {
+      std::cout << "Warning! " << allFieldName << " does not exist!\n";
+      abort();
+    }
+
+    unsigned    iproc = _msh->processor_id(); // get the process_id (for parallel computation)
+    unsigned    nprocs = _msh->n_processors();
+
+    std::vector<unsigned> fieldIndex(subFieldName.size());
+    std::vector<unsigned> fieldType(subFieldName.size());
+
+    std::vector < NumericVector*> mysol(subFieldName.size());
+
+    for (unsigned i = 0; i < subFieldName.size(); i++) {
+      fieldIndex[i] = _sol->GetIndex(subFieldName[i].c_str());
+      fieldType[i] =  _sol->GetSolutionType(fieldIndex[i]);
+      if (fieldType[i] < 3) {
+        if (fieldType[i] != mshType) {
+          mysol[i] = NumericVector::build().release();
+          if (nprocs == 1) {
+            mysol[i]->init(_msh->_dofOffset[mshType][nprocs],
+                           _msh->_dofOffset[mshType][nprocs], false, SERIAL);
+          }
+          else {
+            mysol[i]->init(_msh->_dofOffset[mshType][nprocs],
+                           _msh->_ownSize[mshType][iproc],
+                           _msh->_ghostDofs[mshType][iproc], false, GHOSTED);
+          }
+        }
+        else mysol[i] = _sol->_Sol[fieldIndex[i]];
+      }
+      else {
+        std::cout << "Warning! " << subFieldName[i] << " is a cell field and cannot be projected into nodes. \n";
+        abort();
+      }
+    }
+
+    MEDCoupling::DataArrayDouble* fieldarr = _medField[cnt]->getArray();
+    double *fieldarrayp = fieldarr->getPointer();
+
+    for (unsigned i = 0; i < subFieldName.size(); i++) {
+      _sol->_Sol[fieldIndex[i]]->zero();
+    }
+
+    for (unsigned i = _msh->_dofOffset[mshType][iproc]; i < _msh->_dofOffset[mshType][iproc + 1]; i++) {
+      for (unsigned k = 0; k < subFieldName.size(); k++) {
+        mysol[k]->set(i, fieldarrayp[i * subFieldName.size() + k]);
+      }
+    }
+
+    for (unsigned k = 0; k < subFieldName.size(); k++)  mysol[k]->close();
+
+    for (unsigned i = 0; i < subFieldName.size(); i++) {
+      if (fieldType[i] != mshType) {
+        _sol->_Sol[fieldIndex[i]]->matrix_mult(*mysol[i], *_msh->GetQitoQjProjection(fieldType[i], mshType));
+        delete mysol[i];
+      }
+    }
+
+
+
+
+
+
+
+
+  }
+
+
 // =======================================================
   void FemusMedCoupling::Femus2MedNodeField(const std::vector<std::string> &fieldName, const unsigned &mshType) {
 
@@ -172,6 +271,12 @@ namespace femus {
       std::cout << "Only linear \"0\", quadratic \"1\", or biquadratic \"2\" meshTypes are available\n";
       abort();
     }
+
+
+    if (_medMesh[mshType] == NULL) {
+      this->Femus2MedMesh(mshType);
+    }
+
     // Solution* sol = _mlSol.GetSolutionLevel(_numberOfUniformLevels - 1);
     // Mesh* msh = sol->GetMesh();    // pointer to the mesh (level) object
     unsigned    iproc = _msh->processor_id(); // get the process_id (for parallel computation)
@@ -193,7 +298,7 @@ namespace femus {
       fieldIndex[fldSize] = _sol->GetIndex(fieldName[i].c_str());
       fieldType[fldSize] =  _sol->GetSolutionType(fieldIndex[fldSize]);
       if (fieldType[fldSize] < 3) {
-        fldAllName += fieldName[i];
+        fldAllName += fieldName[i] + " ";
         thisFieldNames[fldSize] = fieldName[i];
         if (fieldType[fldSize] != mshType) {
           mysol[fldSize] = NumericVector::build().release();
@@ -215,6 +320,7 @@ namespace femus {
         std::cout << "Warning! " << fieldName[i] << " is a cell field and cannot be projected into nodes. Removed from list \n";
       }
     }
+    fldAllName += "on " + _medMesh[mshType]->getName();
 
     fieldIndex.resize(fldSize);
     fieldType.resize(fldSize);
@@ -246,9 +352,7 @@ namespace femus {
       }
 
       MEDCoupling::MEDCouplingFieldDouble *field = MEDCoupling::MEDCouplingFieldDouble::New(MEDCoupling::ON_NODES, MEDCoupling::ONE_TIME);
-      if (_medMesh[mshType] == NULL) {
-        this->Femus2MedMesh(mshType);
-      }
+
       field->setMesh(_medMesh[mshType]);
       field->setName(fldAllName);
 
@@ -261,13 +365,13 @@ namespace femus {
       field->setTime(0.0, 0, 0);
       fieldarr->decrRef();
       _medField.push_back(field);
-      _medFieldNames.push_back(thisFieldNames);
+      //_medFieldNames.push_back(thisFieldNames);
       if (iproc == 0) {
-        field->writeVTK("Field" + field->getName() + "on" + _medMesh[mshType]->getName());
+        field->writeVTK(field->getName());
       }
-      std::cout << "projected fields in " << _medField[_medField.size() - 1]->getName() << ": \n";
-      for (unsigned k = 0; k < _medFieldNames[_medFieldNames.size() - 1].size(); k++) std::cout <<  _medFieldNames[_medFieldNames.size() - 1][k] << " ";
-      std::cout << std::endl;
+      std::cout << "projected fields: \n" << _medField[_medField.size() - 1]->getName() << std::endl;
+      //for (unsigned k = 0; k < _medFieldNames[_medFieldNames.size() - 1].size(); k++) std::cout <<  _medFieldNames[_medFieldNames.size() - 1][k] << " ";
+      //std::cout << std::endl;
 
     }
     else {
@@ -275,31 +379,41 @@ namespace femus {
     }
   }
 
-  void FemusMedCoupling::BuildProjectionMatrixBetweenFields(MEDCouplingFieldDouble *sourceField, MEDCouplingUMesh *med_target_mesh) {
-
-    sourceField->setNature(IntensiveMaximum);//Specify which formula to use in case of non overlapping meshes
+  MEDCouplingFieldDouble* FemusMedCoupling::GetFieldProjectionOnMesh(MEDCouplingFieldDouble *sourceField, MEDCouplingUMesh *med_target_mesh, const std::string & projName) {
 
     MEDCouplingRemapper remapper;
     remapper.setPrecision(1e-12);
     remapper.setIntersectionType(INTERP_KERNEL::Triangulation);
-    remapper.prepare(sourceField->getMesh(), med_target_mesh, "P1P1");
+    remapper.prepare(sourceField->getMesh(), med_target_mesh, projName);
 
-
+    sourceField->setNature(IntensiveMaximum);//Specify which formula to use in case of non overlapping meshes
     MEDCouplingFieldDouble *targetField = remapper.transferField(sourceField, 0.); //0. is the default value in case there is no overlapping
-    targetField->writeVTK("ProjectedField");
 
-    const std::vector<std::map<long int, double> >P = remapper.getCrudeMatrix();
+    //const std::vector<std::map<long int, double> >P = remapper.getCrudeMatrix();
 
-    for (unsigned i = 0; i < P.size(); i++) {
-      for (std::map<long int, double>::const_iterator it = P[i].begin(); it != P[i].end(); ++it) {
-        std::cout << it->first << ", " << it->second << "\t";
-      }
-      std::cout << std::endl;
+    // for (unsigned i = 0; i < P.size(); i++) {
+    //   for (std::map<long int, double>::const_iterator it = P[i].begin(); it != P[i].end(); ++it) {
+    //     std::cout << it->first << ", " << it->second << "\t";
+    //   }
+    //   std::cout << std::endl;
+    // }
+    // std::cout << std::endl;
+    // std::cout << std::endl;
+
+
+    std::vector<std::string> subFieldName;
+    GetSubFieldNames(sourceField->getName(), subFieldName);
+
+    std::string allFieldName = "";
+    for (unsigned i = 0; i < subFieldName.size(); i++) {
+      allFieldName += subFieldName[i] + " ";
     }
-    std::cout << std::endl;
-    std::cout << std::endl;
+    allFieldName += "on " + med_target_mesh->getName();
 
-    targetField->decrRef();
+    targetField->setName(allFieldName);
+
+    return targetField;
+
   }
 
 
@@ -363,47 +477,46 @@ namespace femus {
 //readerTarget->Delete()
   }
 
+  unsigned FemusMedCoupling::GetSubFieldPosition(const std::string &fieldName, const std::string &subFieldName) {
 
-// =======================================================
-  void MyFEMuSMED::init() {
-  }
-
-// =======================================================
-  void MyFEMuSMED::solve(unsigned const &it) {
-  }
-
-// =======================================================
-  void MyFEMuSMED::write(unsigned const &it) {
-    _vtkIO.Write("RESU", "biquadratic", {"All"}, it);
-  }
-
-//==========================================================================================
-  bool SetBoundaryCondition(const std::vector<double> &x, const char SolName[],
-                            double &value, const int facename,
-                            const double time) {
-    bool dirichlet = false; // dirichlet
-
-    value = 0;
-
-    return dirichlet;
-  }
-
-//==========================================================================================
-  double SetInitialCondition(const MultiLevelProblem *ml_prob,
-                             const std::vector<double> &x, const char name[]) {
-
-    double value = 0.;
-
-    if (!strcmp(name, "U")) {
-      value = -x[1];
+    unsigned start = 0;
+    unsigned position = 0;
+    bool subFieldFound = false;
+    for (unsigned i = 0; i < fieldName.size(); i++) {
+      if (" " == fieldName.substr(i, 1)) {
+        if (subFieldName == fieldName.substr(start, i - start)) {
+          subFieldFound = true;
+          break;
+        }
+        else position++;
+        i++;
+        if ("on " == fieldName.substr(i, 3)) break;
+        start = i;
+      }
     }
-
-    if (!strcmp(name, "V")) {
-      value = x[1] * x[0];
+    if (!subFieldFound) {
+      std::cout << "Warning! No subfield with name " << subFieldName << " has been found on " << fieldName << "\n";
+      abort();
     }
-
-    return value;
+    return position;
   }
+
+  void FemusMedCoupling::GetSubFieldNames(const std::string &fieldName, std::vector<std::string > &subFieldName) {
+    subFieldName.resize(0);
+    unsigned start = 0;
+    bool subFieldFound = false;
+    for (unsigned i = 0; i < fieldName.size(); i++) {
+      if (" " == fieldName.substr(i, 1)) {
+        subFieldName.push_back(fieldName.substr(start, i - start));
+        i++;
+        if ("on " == fieldName.substr(i, 3)) break;
+        start = i;
+      }
+    }
+  }
+
+
+
 
 } // namespace femus
 
