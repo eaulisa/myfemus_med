@@ -5,43 +5,39 @@ using namespace femus;
 
 int main(int argc, char **args) {
 
-  unsigned numberOfUniformRefinements = 1;
+  unsigned numberOfUniformRefinements = 4;
   MyFEMuSMED myfemus(argc, args, "../MESH/square_quad.neu", numberOfUniformRefinements);
 
-  FemusMedCoupling PM(myfemus._mlSol.GetSolutionLevel(numberOfUniformRefinements - 1));
+  FemusMedCoupling F2M(myfemus._mlSol.GetSolutionLevel(numberOfUniformRefinements - 1));
 
 
   unsigned mshType = 2;
-  PM.Femus2MedMesh("linear");
-  PM.Femus2MedNodeField({"P", "U", "V"}, "biquadratic");
-  PM.Femus2MedCellField({"P", "U", "V"}, "biquadratic");
-  //PM.Femus2MedNodeField({"U", "P", "V"}, "biquadratic");
-  //PM.Femus2MedNodeField({"P", "P", "P"}, "biquadratic");
+  MEDCouplingMesh* mesh0 = F2M.Femus2MedMesh("linear");
+  MEDCouplingFieldDouble* nodeFieldUV = F2M.Femus2MedNodeField({"P", "U", "V"}, "biquadratic");
+  MEDCouplingFieldDouble* cellFieldP = F2M.Femus2MedCellField({"P", "U", "V"}, "biquadratic");
 
+  MEDCouplingMesh* mesh2 = nodeFieldUV->getMesh();
 
-  //PM.BuildProjectionMatrixBetweenMeshes(PM._medMesh[0],PM._medMesh[0]);
+  MEDCouplingFieldDouble* targetfield = F2M.GetFieldProjectionOnMesh(nodeFieldUV, mesh2, "Identity");
 
-  MEDCouplingFieldDouble * targetfield = PM.GetFieldProjectionOnMesh(PM._medField[0], static_cast <MEDCouplingUMesh*>(PM._medMesh[2]), "P1P1");
+  F2M.AddField(targetfield);
 
-  PM._medField[0]->decrRef();
-  PM._medField[0] = targetfield;
-  //PM.PushBackField(targetfield);
-
-  if(PM.GetProcessId() == 0){
+  if (F2M.GetProcessId() == 0) {
     targetfield->writeVTK(targetfield->getName());
   }
 
-  PM.Med2FemusNodeField({"U", "V"}, "biquadratic");
+  F2M.Med2FemusNodeField({"U", "V"}, "biquadratic");
+
+  targetfield = F2M.GetFieldProjectionOnMesh(cellFieldP, mesh2, "P0P0");
+  F2M.AddField(targetfield);
+
+  if (F2M.GetProcessId() == 0) {
+    targetfield->writeVTK(targetfield->getName());
+  }
 
   myfemus._vtkIO.Write("RESU", "biquadratic", {"All"}, 1);
 
-
-  targetfield = PM.GetFieldProjectionOnMesh(PM._medField[1], static_cast <MEDCouplingUMesh*>(PM._medMesh[0]), "P0P0");
-  if(PM.GetProcessId() == 0){
-    targetfield->writeVTK(targetfield->getName());
-  }
-  targetfield->decrRef();
-
+  F2M.EraseAllFields();
 
   return 0;
 }

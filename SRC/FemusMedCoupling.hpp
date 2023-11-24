@@ -48,20 +48,47 @@ namespace femus {
         }
       }
 
-      void Femus2MedMesh(const unsigned &meshType);
-      void Femus2MedMesh(const std::string &stringMeshType = "biquadratic") { Femus2MedMesh(MapMeshType(stringMeshType)); }
-      void Femus2MedNodeField(const std::vector<std::string> &fieldName, const unsigned &mshType);
-      void Femus2MedNodeField(const std::vector<std::string> &fieldName, const std::string &stringMeshType = "biquadratic") {
-        Femus2MedNodeField(fieldName, MapMeshType(stringMeshType));
+      MEDCouplingUMesh* Femus2MedMesh(const unsigned &meshType);
+      MEDCouplingUMesh* Femus2MedMesh(const std::string &stringMeshType = "biquadratic") {
+        return Femus2MedMesh(MapMeshType(stringMeshType));
       }
-      void Med2FemusNodeField(const std::vector<std::string> &fieldName, const unsigned &mshType);
-      void Med2FemusNodeField(const std::vector<std::string> &fieldName, const std::string &stringMeshType = "biquadratic"){
-        Med2FemusNodeField(fieldName, MapMeshType(stringMeshType));
+      MEDCouplingFieldDouble* Femus2MedNodeField(const std::vector<std::string> &fieldName, const unsigned &mshType);
+      MEDCouplingFieldDouble* Femus2MedNodeField(const std::vector<std::string> &fieldName, const std::string &stringMeshType = "biquadratic") {
+        return Femus2MedNodeField(fieldName, MapMeshType(stringMeshType));
       }
 
-      void Femus2MedCellField(const std::vector<std::string> &fieldName, const unsigned &mshType);
-      void Femus2MedCellField(const std::vector<std::string> &fieldName, const std::string &stringMeshType = "biquadratic"){
-        Femus2MedCellField(fieldName, MapMeshType(stringMeshType));
+
+      void Med2FemusNodeField(const std::vector<std::string> &subFieldName, const std::string &stringMeshType = "biquadratic") {
+        Med2FemusNodeField(subFieldName, MapMeshType(stringMeshType));
+      }
+      void Med2FemusNodeField(const std::vector<std::string> &subFieldName, const unsigned &mshType) {
+        MEDCouplingFieldDouble* thisField = GetField(subFieldName, mshType);
+        Med2FemusNodeField(thisField);
+      }
+      void Med2FemusNodeField(const std::string &fieldName) {
+        Med2FemusNodeField(GetField(fieldName));
+      }
+      void Med2FemusNodeField(MEDCouplingFieldDouble* thisField);
+
+
+
+      void Med2FemusCellField(const std::vector<std::string> &subFieldName, const std::string &stringMeshType = "biquadratic") {
+        Med2FemusCellField(subFieldName, MapMeshType(stringMeshType));
+      }
+      void Med2FemusCellField(const std::vector<std::string> &subFieldName, const unsigned &mshType) {
+        MEDCouplingFieldDouble* thisField = GetField(subFieldName, mshType);
+        Med2FemusCellField(thisField);
+      }
+      void Med2FemusCellField(const std::string &fieldName) {
+        Med2FemusCellField(GetField(fieldName));
+      }
+      void Med2FemusCellField(MEDCouplingFieldDouble* thisField);
+
+
+
+      MEDCouplingFieldDouble* Femus2MedCellField(const std::vector<std::string> &fieldName, const unsigned &mshType);
+      MEDCouplingFieldDouble* Femus2MedCellField(const std::vector<std::string> &fieldName, const std::string &stringMeshType = "biquadratic") {
+        return Femus2MedCellField(fieldName, MapMeshType(stringMeshType));
       }
 
 
@@ -76,24 +103,81 @@ namespace femus {
         }
       }
 
-      void BuildProjectionMatrixBetweenMeshes(const MEDCouplingUMesh *med_source_mesh, MEDCouplingUMesh *med_target_mesh);
-      MEDCouplingFieldDouble * GetFieldProjectionOnMesh(MEDCouplingFieldDouble *sourceField, MEDCouplingUMesh *med_target_mesh, const std::string &projName);
+      void BuildProjectionMatrixBetweenMeshes(const MEDCouplingMesh *med_source_mesh, MEDCouplingMesh *med_target_mesh);
+      MEDCouplingFieldDouble * GetFieldProjectionOnMesh(MEDCouplingFieldDouble *sourceField, MEDCouplingMesh *med_target_mesh, const std::string &projName);
 
       unsigned GetSubFieldPosition(const std::string &fieldName, const std::string &subFieldName);
       void GetSubFieldNames(const std::string &fieldName, std::vector<std::string > &subFieldName);
 
 
-      void PushBackField(MEDCoupling::MEDCouplingFieldDouble *medField) {
-        _medField.push_back(medField);
+      void AddField(MEDCouplingFieldDouble *field) {
+        std::string fieldName = field->getName();
+        for (unsigned i = 0; i < _medField.size(); i++) {
+          if (_medField[i]->getName() == fieldName) {
+            std::cout << "Warning a field named " << fieldName << " already exists and it is being replaced" << std::endl;
+            _medField[i]->decrRef();
+            _medField[i] = field;
+            return;
+          }
+        }
+        _medField.push_back(field);
       }
-      unsigned GetProcessId(){return _iproc;}
 
+      unsigned GetNumberOfFields() {
+        return _medField.size();
+      }
+
+
+
+      void EraseAllFields() {
+        for (unsigned i = 0; i < _medField.size(); i++) {
+          _medField[i]->decrRef();
+        }
+        _medField.resize(0);
+      }
+
+      void EraseField(const std::string &fieldName) {
+        for (unsigned i = 0; i < _medField.size(); i++) {
+          if (_medField[i]->getName() == fieldName) {
+            _medField[i]->decrRef();
+            _medField.erase(_medField.begin() + i);
+            return;
+          }
+        }
+        std::cout << "Warning a field named " << fieldName << " cannot be removed, because it does not exist" << std::endl;
+      }
+
+      void EraseField(const unsigned &i) {
+        if (i < _medField.size()) {
+          _medField[i]->decrRef();
+          _medField.erase(_medField.begin() + i);
+        }
+        else {
+          std::cout << "Warning there is no field in the " << i << " position to be erased " << std::endl;
+        }
+        return;
+      }
+
+
+      unsigned GetProcessId() {
+        return _iproc;
+      }
+
+      std::string GetFieldName(const std::vector<std::string> &subFieldName, const unsigned &mshType);
+      MEDCouplingFieldDouble* GetField(const std::vector<std::string> &subFieldName, const unsigned &mshType);
+      MEDCouplingFieldDouble* GetField(const std::string & fieldName);
+      MEDCouplingFieldDouble* GetField(const unsigned &i) {
+        return (i < _medField.size()) ? _medField[i] : NULL;
+      }
+
+
+  private:
       Solution *_sol = NULL;
       Mesh *_msh = NULL;
       unsigned _iproc;
 
-      MEDCoupling::MEDCouplingUMesh* _medMesh[3] = {NULL, NULL, NULL};
-      std::vector <MEDCoupling::MEDCouplingFieldDouble *> _medField;
+      MEDCouplingUMesh* _medMesh[3] = {NULL, NULL, NULL};
+      std::vector <MEDCouplingFieldDouble *> _medField;
   };
 
 
@@ -102,4 +186,5 @@ namespace femus {
 
 
 } // namespace femus
+
 
