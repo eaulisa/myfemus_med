@@ -6,6 +6,7 @@ RESU*/
 Testing/
 _deps/
 build/
+spack_env*/*
 CMakeCache.txt
 CMakeCache.txt.prev
 Makefile
