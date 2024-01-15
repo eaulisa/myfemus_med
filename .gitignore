@@ -5,9 +5,11 @@ CMakeFiles/
 RESU*/
 Testing/
 _deps/
+build/
 CMakeCache.txt
 CMakeCache.txt.prev
 Makefile
 cmake_install.cmake
 qtcsettings.cmake
-build/
+SRC/CMakeLists.txt.user*
+
